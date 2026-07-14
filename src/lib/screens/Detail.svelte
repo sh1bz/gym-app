@@ -34,13 +34,15 @@
 	);
 	const detCount = $derived(store.timesDone(dx.name));
 
-	// history + chart
+	// history + chart. `hist` is null until there are 2+ logged sessions to plot.
 	const hist = $derived(store.chartValues(dx, nW));
-	const hMin = $derived(Math.min(...hist));
-	const hMax = $derived(Math.max(...hist));
+	const hasChart = $derived(Array.isArray(hist) && hist.length >= 2);
+	const series = $derived(hasChart ? hist : []);
+	const hMin = $derived(Math.min(...series));
+	const hMax = $derived(Math.max(...series));
 	const hRange = $derived(hMax - hMin || 1);
 	const pts = $derived(
-		hist.map((v, k) => ({
+		series.map((v, k) => ({
 			x: (16 + k * (288 / (nW - 1))).toFixed(1),
 			y: (118 - ((v - hMin) / hRange) * 92).toFixed(1)
 		}))
@@ -57,13 +59,13 @@
 			}))
 	);
 
-	const hDelta = $derived(hist[nW - 1] - hist[0]);
 	const dUnit = $derived(dBW ? ' reps' : ' kg');
+	const hDelta = $derived(hasChart ? series[series.length - 1] - series[0] : 0);
 	const detDelta = $derived(
 		(hDelta === 0 ? '0' : (hDelta > 0 ? '+' : '−') + fmt(Math.abs(hDelta))) + dUnit + ' · ' + nW + ' wk'
 	);
 	const detDeltaColor = $derived(hDelta > 0 ? '#36e0a0' : hDelta < 0 ? 'var(--warn)' : 'var(--mute)');
-	const detNow = $derived(fmt(hist[nW - 1]) + dUnit);
+	const detNow = $derived(hasChart ? fmt(series[series.length - 1]) + dUnit : '');
 
 	const chartXLabels = $derived(
 		[nW - 1, Math.round(((nW - 1) * 2) / 3), Math.round((nW - 1) / 3), 0].map((back) => ({
@@ -141,33 +143,51 @@
 	<div class="card progress" style="animation:rise .5s cubic-bezier(.2,.8,.3,1.1) .15s both;">
 		<div class="prog-head">
 			<span class="eyebrow">Progress</span>
-			<span class="mono delta" style="color:{detDeltaColor};">{detDelta}</span>
+			{#if hasChart}
+				<span class="mono delta" style="color:{detDeltaColor};">{detDelta}</span>
+			{/if}
 		</div>
-		<div class="chips">
-			{#each rangeChips as c}
-				<button
-					class="chip mono"
-					onclick={() => setRange(c.n)}
-					style="border-color:{c.border};background:{c.bg};color:{c.color};">{c.label}</button
-				>
-			{/each}
-		</div>
-		<svg viewBox="0 0 320 140" class="chart">
-			<line x1="16" y1="120" x2="304" y2="120" style="stroke:var(--line);stroke-width:1;" />
-			<polyline
-				points={chartPts}
-				style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 6px var(--accent-glow));"
-			/>
-			{#each chartDots as p}
-				<circle cx={p.x} cy={p.y} r={p.r} style="fill:{p.fill};stroke:var(--bg2);stroke-width:2;" />
-			{/each}
-		</svg>
-		<div class="xlabels mono">
-			{#each chartXLabels as xl}
-				<span>{xl.t}</span>
-			{/each}
-		</div>
-		<div class="thisweek">this week · <b class="mono">{detNow}</b></div>
+		{#if hasChart}
+			<div class="chips">
+				{#each rangeChips as c}
+					<button
+						class="chip mono"
+						onclick={() => setRange(c.n)}
+						style="border-color:{c.border};background:{c.bg};color:{c.color};">{c.label}</button
+					>
+				{/each}
+			</div>
+			<svg viewBox="0 0 320 140" class="chart">
+				<line x1="16" y1="120" x2="304" y2="120" style="stroke:var(--line);stroke-width:1;" />
+				<polyline
+					points={chartPts}
+					style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 6px var(--accent-glow));"
+				/>
+				{#each chartDots as p}
+					<circle cx={p.x} cy={p.y} r={p.r} style="fill:{p.fill};stroke:var(--bg2);stroke-width:2;" />
+				{/each}
+			</svg>
+			<div class="xlabels mono">
+				{#each chartXLabels as xl}
+					<span>{xl.t}</span>
+				{/each}
+			</div>
+			<div class="thisweek">this week · <b class="mono">{detNow}</b></div>
+		{:else}
+			<div class="empty">
+				<svg viewBox="0 0 320 96" class="empty-chart">
+					<line x1="16" y1="80" x2="304" y2="80" style="stroke:var(--line);stroke-width:1;" />
+					<polyline
+						points="16,80 92,80 168,80 244,80 304,80"
+						style="fill:none;stroke:var(--line);stroke-width:2;stroke-dasharray:5 7;stroke-linecap:round;"
+					/>
+				</svg>
+				<div class="empty-title">No sessions logged yet</div>
+				<div class="empty-sub">
+					Your progress chart appears here once you've trained {detName} a couple of times.
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<div class="card edit" style="animation:rise .5s cubic-bezier(.2,.8,.3,1.1) .21s both;">
@@ -315,6 +335,29 @@
 	.thisweek b {
 		font-weight: 700;
 		color: var(--txt);
+	}
+
+	.empty {
+		padding: 6px 4px 4px;
+		text-align: center;
+	}
+	.empty-chart {
+		width: 100%;
+		margin-top: 6px;
+		opacity: 0.7;
+	}
+	.empty-title {
+		margin-top: 14px;
+		font-size: 15px;
+		font-weight: 700;
+		color: var(--txt);
+	}
+	.empty-sub {
+		margin-top: 6px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--mute);
+		line-height: 1.5;
 	}
 
 	.edit {

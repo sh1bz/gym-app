@@ -5,12 +5,9 @@ import { SEED_PROGRAM, EXDB, CATS, DAY_MS, ICON_BY_NAME, PATTERN_BY_NAME } from 
 import {
 	fmt,
 	fmtElapsed,
-	exLast,
 	findCat,
 	sortDays,
 	streakOf,
-	seedCount,
-	genHistory,
 	realSeries,
 	trendOf,
 	lastOf,
@@ -56,9 +53,6 @@ export class GymStore {
 	accent = $state('#ff4e27');
 	microStep = $state('2.5');
 	haptics = $state(true);
-	// After a user reset, stop showing the day-one seeded demo stats and show
-	// real (empty) data instead. A brand-new install leaves this false.
-	fresh = $state(false);
 
 	// ---- transient UI state ----
 	repCount = $state(8);
@@ -120,33 +114,31 @@ export class GymStore {
 		return parseFloat(this.microStep ?? '2.5') || 2.5;
 	}
 	timesDone(name) {
-		// Seeded baseline keeps the UI alive from day one; real sessions stack on top.
-		// After a reset (`fresh`), only real sessions count.
-		const real = this.history?.[name]?.length || 0;
-		return this.fresh ? real : seedCount(name) + real;
+		// Honest: only real logged sessions count.
+		return this.history?.[name]?.length || 0;
 	}
 	recordsOf(name) {
 		return this.history?.[name] || null;
 	}
-	/** Real trend for an exercise; flat when there's no real history after a reset. */
+	/** Real trend for an exercise; flat until there are 2+ logged sessions. */
 	trendFor(exercise) {
 		const recs = this.recordsOf(exercise.name);
-		if ((!recs || recs.length < 2) && this.fresh) return 'flat';
+		if (!recs || recs.length < 2) return 'flat';
 		return trendOf(exercise, recs);
 	}
-	/** "last time" string: real most-recent performance, else the configured/seeded anchor. */
+	/** "last time": real most-recent performance, else the configured starting weight. */
 	lastTimeFor(exercise) {
 		const r = lastOf(this.recordsOf(exercise.name));
 		if (r) return (exercise.start === 0 ? 'BW' : fmt(r.w)) + ' × ' + r.reps;
-		if (this.fresh) return (exercise.start === 0 ? 'BW' : fmt(exercise.start)) + ' × ' + exercise.reps;
-		return exLast(exercise);
+		return (exercise.start === 0 ? 'BW' : fmt(exercise.start)) + ' × ' + exercise.reps;
 	}
-	/** Chart series (numbers) for `weeks`: real when we have enough, else seeded (or flat after reset). */
+	/** Chart series (numbers), or null when there isn't enough real history to plot. */
 	chartValues(exercise, weeks) {
-		const real = realSeries(exercise, this.recordsOf(exercise.name), weeks);
-		if (real) return real;
-		if (this.fresh) return new Array(weeks).fill(exercise.start === 0 ? exercise.reps : exercise.start);
-		return genHistory(exercise, weeks);
+		return realSeries(exercise, this.recordsOf(exercise.name), weeks);
+	}
+	/** Whether an exercise has enough logged history to draw a progress chart. */
+	hasChart(exercise) {
+		return !!realSeries(exercise, this.recordsOf(exercise.name), this.chartWeeks);
 	}
 	/** Weight recommendation for an exercise (spec §5). */
 	recommendFor(exercise) {
@@ -177,22 +169,32 @@ export class GymStore {
 		const fields = [
 			'program', 'day', 'ex', 'setIdx', 'weight', 'screen', 'sessionOn', 'lastDone',
 			'sessions', 'exCount', 'history', 'startedAt', 'restEnd', 'restTotal', 'loggedText',
-			'loggedName', 'nextLabel', 'detDay', 'detIdx', 'edDay', 'accent', 'microStep', 'haptics',
-			'fresh'
+			'loggedName', 'nextLabel', 'detDay', 'detIdx', 'edDay', 'accent', 'microStep', 'haptics'
 		];
 		for (const f of fields) if (p[f] !== undefined) this[f] = p[f];
 	}
 
 	normalize() {
 		const now = Date.now();
-		if (!this.lastDone) {
-			this.lastDone = { A: now - 6 * DAY_MS, B: now - 2 * DAY_MS, C: now - 4 * DAY_MS };
-		}
-		if (!Array.isArray(this.sessions)) {
-			const s = [];
-			for (let wb = 8; wb >= 1; wb--) [1, 3, 5].forEach((d) => s.push(now - wb * 7 * DAY_MS + d * DAY_MS));
-			s.push(now - 2 * DAY_MS, now - 4 * DAY_MS, now - 6 * DAY_MS);
-			this.sessions = s.filter((t) => t < now);
+		let dirty = false;
+		if (!this.lastDone) this.lastDone = {};
+		if (!Array.isArray(this.sessions)) this.sessions = [];
+		// Honest by default: without any real logged history, there's no streak,
+		// no "last trained" and no counts. Clears the old seeded demo data once.
+		const noHistory = !this.history || Object.keys(this.history).length === 0;
+		if (noHistory) {
+			if (this.sessions.length) {
+				this.sessions = [];
+				dirty = true;
+			}
+			if (Object.keys(this.lastDone).length) {
+				this.lastDone = {};
+				dirty = true;
+			}
+			if (Object.keys(this.exCount || {}).length) {
+				this.exCount = {};
+				dirty = true;
+			}
 		}
 		if (!this.program[this.day]) this.day = 0;
 		const wk = this.program[this.day].workout;
@@ -220,12 +222,19 @@ export class GymStore {
 		for (const d of this.program) {
 			for (const x of d.workout) {
 				const wantIcon = ICON_BY_NAME[x.name];
-				if (wantIcon && x.icon !== wantIcon) x.icon = wantIcon;
+				if (wantIcon && x.icon !== wantIcon) {
+					x.icon = wantIcon;
+					dirty = true;
+				}
 				const wantPat = PATTERN_BY_NAME[x.name];
-				if (wantPat && x.pattern !== wantPat) x.pattern = wantPat;
+				if (wantPat && x.pattern !== wantPat) {
+					x.pattern = wantPat;
+					dirty = true;
+				}
 			}
 		}
 		this.repCount = this.curEx.reps ?? 8;
+		if (dirty && browser) this.persist(); // sync the cleared demo + migrations
 	}
 
 	startClock() {
@@ -255,7 +264,7 @@ export class GymStore {
 			exCount: this.exCount, history: this.history, startedAt: this.startedAt, restEnd: this.restEnd,
 			restTotal: this.restTotal, loggedText: this.loggedText, loggedName: this.loggedName,
 			nextLabel: this.nextLabel, detDay: this.detDay, detIdx: this.detIdx, edDay: this.edDay,
-			accent: this.accent, microStep: this.microStep, haptics: this.haptics, fresh: this.fresh
+			accent: this.accent, microStep: this.microStep, haptics: this.haptics
 		};
 	}
 
@@ -862,8 +871,7 @@ export class GymStore {
 		this.sessions = [];
 		this.history = {};
 		this.exCount = {};
-		this.lastDone = {}; // truthy empty → normalize() won't re-seed demo dates
-		this.fresh = true;
+		this.lastDone = {};
 		this.sessionOn = false;
 		this.screen = 'home';
 		this.ex = 0;
@@ -901,11 +909,10 @@ export class GymStore {
 		this.loggedText = '';
 		this.loggedName = '';
 		this.nextLabel = '';
-		this.lastDone = null; // null → normalize() re-seeds the demo dates/sessions
-		this.sessions = null;
+		this.lastDone = {};
+		this.sessions = [];
 		this.exCount = {};
 		this.history = {};
-		this.fresh = false; // restore day-one seeded demo stats
 		this.detDay = 0;
 		this.detIdx = 0;
 		this.edDay = 0;
