@@ -71,10 +71,19 @@ a:hover {
 	background: radial-gradient(120% 80% at 50% -10%, #1a1c24 0%, var(--bg) 55%);
 	overflow: hidden;
 }
-/* On phones or an installed standalone app, pin the frame to every edge so its
-   background covers the whole screen (incl. under the notch / home indicator).
-   Fixed positioning avoids iOS standalone `dvh` leaving a gap at the bottom. */
-@media (max-width: 480px), (display-mode: standalone) {
+/* On a phone browser, fill the whole viewport (the browser handles its own
+   toolbar / safe areas via 100dvh — no fixed positioning, which fights it). */
+@media (max-width: 480px) {
+	.app-frame {
+		max-width: none;
+		max-height: none;
+	}
+}
+
+/* Installed as a standalone app: pin the frame to every edge so its background
+   covers the whole screen, incl. under the notch / home indicator. Fixed
+   positioning avoids iOS standalone `dvh` leaving a gap at the bottom. */
+@media all and (display-mode: standalone) {
 	.app-root {
 		display: block;
 	}
