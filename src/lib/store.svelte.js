@@ -35,7 +35,6 @@ export class GymStore {
 	nextLabel = $state('');
 	lastDone = $state(null);
 	sessions = $state(null);
-	exCount = $state({});
 	detDay = $state(0);
 	detIdx = $state(0);
 	detFrom = $state('home');
@@ -43,8 +42,9 @@ export class GymStore {
 	libCat = $state(null);
 	libSwapIdx = $state(null);
 	chartWeeks = $state(8);
+	_savedAt = 0; // blob timestamp of the currently-loaded state (for sync conflict checks)
 	// Real per-exercise session history: { [name]: [{ t, w, reps, top }] }.
-	// Powers real charts/counts/trends/recommendations; seeded stubs fill in until it grows.
+	// Powers all charts/counts/trends/recommendations from real logged sessions only.
 	history = $state({});
 	// Working sets logged during the current live session (summarised on save).
 	sessionLog = $state([]);
@@ -136,10 +136,6 @@ export class GymStore {
 	chartValues(exercise, weeks) {
 		return realSeries(exercise, this.recordsOf(exercise.name), weeks);
 	}
-	/** Whether an exercise has enough logged history to draw a progress chart. */
-	hasChart(exercise) {
-		return !!realSeries(exercise, this.recordsOf(exercise.name), this.chartWeeks);
-	}
 	/** Weight recommendation for an exercise (spec §5). */
 	recommendFor(exercise) {
 		return recommend(exercise, this.recordsOf(exercise.name));
@@ -168,10 +164,11 @@ export class GymStore {
 	applyBlob(p) {
 		const fields = [
 			'program', 'day', 'ex', 'setIdx', 'weight', 'screen', 'sessionOn', 'lastDone',
-			'sessions', 'exCount', 'history', 'startedAt', 'restEnd', 'restTotal', 'loggedText',
+			'sessions', 'history', 'startedAt', 'restEnd', 'restTotal', 'loggedText',
 			'loggedName', 'nextLabel', 'detDay', 'detIdx', 'edDay', 'accent', 'microStep', 'haptics'
 		];
 		for (const f of fields) if (p[f] !== undefined) this[f] = p[f];
+		this._savedAt = p.savedAt || 0;
 	}
 
 	normalize() {
@@ -191,10 +188,6 @@ export class GymStore {
 				this.lastDone = {};
 				dirty = true;
 			}
-			if (Object.keys(this.exCount || {}).length) {
-				this.exCount = {};
-				dirty = true;
-			}
 		}
 		if (!this.program[this.day]) this.day = 0;
 		const wk = this.program[this.day].workout;
@@ -205,12 +198,17 @@ export class GymStore {
 		}
 		if (this.screen === 'rest' && this.restEnd <= now) {
 			const w = wk[this.ex];
-			if (w && this.setIdx >= w.sets && this.ex < wk.length - 1) {
-				this.ex += 1;
-				this.setIdx = 0;
-				this.weight = wk[this.ex].start;
+			if (w && this.setIdx >= w.sets) {
+				if (this.ex < wk.length - 1) {
+					this.ex += 1;
+					this.setIdx = 0;
+					this.weight = wk[this.ex].start;
+				} else {
+					// Rested past the last set of the last exercise → session is done.
+					this.sessionOn = false;
+				}
 			}
-			this.screen = 'active';
+			this.screen = this.sessionOn ? 'active' : 'home';
 		}
 		if (!this.sessionOn && (this.screen === 'active' || this.screen === 'rest')) this.screen = 'home';
 		if (!this.program[this.edDay]) this.edDay = 0;
@@ -261,15 +259,17 @@ export class GymStore {
 			program: this.program, day: this.day, ex: this.ex, setIdx: this.setIdx, weight: this.weight,
 			screen: ['active', 'rest', 'home'].includes(this.screen) ? this.screen : 'home',
 			sessionOn: this.sessionOn, lastDone: this.lastDone, sessions: this.sessions,
-			exCount: this.exCount, history: this.history, startedAt: this.startedAt, restEnd: this.restEnd,
+			history: this.history, startedAt: this.startedAt, restEnd: this.restEnd,
 			restTotal: this.restTotal, loggedText: this.loggedText, loggedName: this.loggedName,
 			nextLabel: this.nextLabel, detDay: this.detDay, detIdx: this.detIdx, edDay: this.edDay,
-			accent: this.accent, microStep: this.microStep, haptics: this.haptics
+			accent: this.accent, microStep: this.microStep, haptics: this.haptics,
+			savedAt: this._savedAt
 		};
 	}
 
 	persist() {
 		if (!browser) return;
+		this._savedAt = Date.now(); // stamp this save so sync can pick the newer copy
 		try {
 			localStorage.setItem(KEY, JSON.stringify(this.blob()));
 		} catch (e) {
@@ -305,10 +305,18 @@ export class GymStore {
 				.eq('user_id', this.user.id)
 				.maybeSingle();
 			if (error) throw error;
-			if (data?.blob && Array.isArray(data.blob.program) && data.blob.program.length) {
-				this.applyBlob(data.blob);
-				this.normalize();
-				this.animateStreak();
+			const remote = data?.blob;
+			if (remote && Array.isArray(remote.program) && remote.program.length) {
+				// Don't let an older/empty cloud copy clobber newer local training.
+				const localHasHistory = this.history && Object.keys(this.history).length > 0;
+				const remoteNewer = (remote.savedAt || 0) >= (this._savedAt || 0);
+				if (remoteNewer || !localHasHistory) {
+					this.applyBlob(remote);
+					this.normalize();
+					this.animateStreak();
+				} else {
+					await this.pushState(); // local is newer → keep it and push up
+				}
 			} else {
 				await this.pushState(); // first login: seed remote from local
 			}
@@ -385,9 +393,14 @@ export class GymStore {
 	animateStreak() {
 		if (!browser) return;
 		const target = streakOf(this.sessions);
+		cancelAnimationFrame(this._streakRaf);
+		// Respect reduced-motion: snap straight to the value, no count-up.
+		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+			this.streakDisp = target;
+			return;
+		}
 		const t0 = performance.now();
 		const dur = 900;
-		cancelAnimationFrame(this._streakRaf);
 		const step = (t) => {
 			const p = Math.min(1, (t - t0) / dur);
 			this.streakDisp = Math.round(target * (1 - Math.pow(1 - p, 3)));
@@ -798,8 +811,9 @@ export class GymStore {
 		this.program.forEach((d) => d.workout.forEach((x) => used.add(x.name)));
 		const workout = src.workout.map((x) => {
 			const cat = x.cat || findCat(x.name) || 'Chest';
-			let pool = EXDB[cat].filter((c) => !used.has(c.name));
-			if (!pool.length) pool = EXDB[cat].filter((c) => c.name !== x.name);
+			const catPool = EXDB[cat] || EXDB.Chest;
+			let pool = catPool.filter((c) => !used.has(c.name));
+			if (!pool.length) pool = catPool.filter((c) => c.name !== x.name);
 			if (!pool.length) pool = [x];
 			const pick = pool.reduce((a, b) => (this.timesDone(a.name) <= this.timesDone(b.name) ? a : b));
 			used.add(pick.name);
@@ -867,10 +881,9 @@ export class GymStore {
 	 */
 	resetTrainingData() {
 		this.buzz([10, 40, 10]);
-		cancelAnimationFrame(this._raf);
+		cancelAnimationFrame(this._streakRaf); // stop any in-flight streak count-up
 		this.sessions = [];
 		this.history = {};
-		this.exCount = {};
 		this.lastDone = {};
 		this.sessionOn = false;
 		this.screen = 'home';
@@ -891,12 +904,12 @@ export class GymStore {
 	}
 
 	/**
-	 * Factory reset: everything back to a brand-new install — the seeded
-	 * Push/Pull/Legs program, default settings, and day-one demo stats.
+	 * Factory reset: everything back to a brand-new install — the default
+	 * Push/Pull/Legs program, default settings, and an empty (honest) history.
 	 */
 	factoryReset() {
 		this.buzz([10, 40, 10]);
-		cancelAnimationFrame(this._raf);
+		cancelAnimationFrame(this._streakRaf);
 		this.program = clone(SEED_PROGRAM);
 		this.day = 0;
 		this.ex = 0;
@@ -911,7 +924,6 @@ export class GymStore {
 		this.nextLabel = '';
 		this.lastDone = {};
 		this.sessions = [];
-		this.exCount = {};
 		this.history = {};
 		this.detDay = 0;
 		this.detIdx = 0;
@@ -923,7 +935,7 @@ export class GymStore {
 		this.applyAccent();
 		this.weight = this.program[0].workout[0].start;
 		this.repCount = this.program[0].workout[0].reps;
-		this.normalize(); // seeds lastDone/sessions like a fresh install
+		this.normalize();
 		this.screen = 'home';
 		this.settingsOpen = false;
 		this.streakDisp = null;

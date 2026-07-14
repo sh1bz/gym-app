@@ -22,12 +22,8 @@ export function fmtElapsed(sec) {
 }
 
 export function fmtMin(sec) {
+	if (sec <= 0) return '0 min';
 	return '~' + Math.max(1, Math.round(sec / 60)) + ' min';
-}
-
-/** "last time" string for an exercise. */
-export function exLast(x) {
-	return x.last || (x.start === 0 ? 'BW × ' + x.reps : fmt(x.start) + ' × ' + x.reps);
 }
 
 /** Estimated seconds for one set (reps * 3s work + 15s setup). */
@@ -38,11 +34,6 @@ export function setSecs(x) {
 /** Estimated seconds for a whole exercise incl. rest. */
 export function exSecs(x) {
 	return x.sets * (setSecs(x) + x.rest);
-}
-
-/** Deterministic seeded "times performed" count (stubbed until real logs exist). */
-export function seedCount(name) {
-	return 12 + (name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 40);
 }
 
 export function findCat(name) {
@@ -88,27 +79,6 @@ export function streakOf(sessions, now = Date.now()) {
 	return n;
 }
 
-/** Synthetic per-lift history for the progress chart (stubbed until real logs). */
-export function genHistory(x, n) {
-	const isBW = x.start === 0;
-	const b = isBW ? x.reps : x.start;
-	const stepW = isBW ? 1 : Math.max(2.5, Math.round(b * 0.02 * 2) / 2);
-	const floor = isBW ? Math.max(1, b * 0.4) : Math.max(stepW, b * 0.5);
-	const out = [];
-	for (let k = 0; k < n; k++) {
-		const back = n - 1 - k;
-		let v;
-		if (x.trend === 'up')
-			v = b - back * stepW * 0.8 + (k % 3 === 1 ? stepW * 0.5 : 0) + (k % 5 === 2 ? -stepW * 0.5 : 0);
-		else if (x.trend === 'down')
-			v = b + Math.min(back, 6) * stepW * 0.6 - back * stepW * 0.15 - (k % 3 === 2 ? stepW * 0.4 : 0);
-		else v = b + (k % 3 === 0 ? 0 : k % 3 === 1 ? stepW * 0.5 : -stepW * 0.5) + (k % 7 === 3 ? stepW * 0.5 : 0);
-		out.push(Math.max(floor, Math.round(v * 2) / 2));
-	}
-	out[n - 1] = b;
-	return out;
-}
-
 const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const MONS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const MONS2 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -127,8 +97,7 @@ export function weekDateLabel(back, now = Date.now()) {
 // Real data pipeline (spec §5). Each exercise's `history` is a chronological
 // list of per-session records: { t: timestamp, w: weight, reps: reps hit on
 // the top set, top: whether every working set hit the rep target }.
-// Everything below derives real trend/charts/counts/recommendations from that,
-// and callers fall back to seeded stubs when history is too thin.
+// Everything below derives real trend/charts/counts/recommendations from that.
 // ---------------------------------------------------------------------------
 
 /** Value a record contributes to a chart: reps for bodyweight, weight otherwise. */
@@ -139,7 +108,7 @@ function recordValue(exercise, r) {
 /**
  * Weekly series of `nWeeks` values ending this week, forward-filled across gaps.
  * Returns an array of numbers, or null if there aren't at least 2 real points
- * in the window (caller should fall back to the seeded genHistory curve).
+ * in the window (the caller shows an empty state instead of a chart).
  */
 export function realSeries(exercise, records, nWeeks, now = Date.now()) {
 	if (!records || records.length < 2) return null;

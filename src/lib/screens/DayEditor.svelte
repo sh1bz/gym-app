@@ -69,6 +69,12 @@
 						<div
 							class="rowmid"
 							onclick={() => store.openDetail(store.edDay, r.i, 'editDay')}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									store.openDetail(store.edDay, r.i, 'editDay');
+								}
+							}}
 							role="button"
 							tabindex="0"
 						>

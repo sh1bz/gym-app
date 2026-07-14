@@ -1,11 +1,15 @@
 /// <reference types="@sveltejs/kit" />
-// Offline-first service worker: precache the app shell + assets so Session
-// launches and runs with no signal (a gym is a dead-zone). Data already lives
-// in localStorage; this caches the code so the whole PWA works offline.
+// Offline-first service worker. Precache the app shell + assets so Session
+// launches with no signal. Strategy:
+//   • immutable hashed build assets → cache-first (fast, content-addressed)
+//   • everything else (navigations, prerendered shell, static files) →
+//     network-first with cache fallback, so new deploys apply on the next load
+//     instead of a version behind, while still working fully offline.
 import { build, files, prerendered, version } from '$service-worker';
 
 const CACHE = `session-${version}`;
 const PRECACHE = [...build, ...files, ...prerendered];
+const IMMUTABLE = new Set(build); // hashed filenames — safe to serve from cache forever
 
 self.addEventListener('install', (event) => {
 	event.waitUntil(
@@ -32,24 +36,27 @@ self.addEventListener('fetch', (event) => {
 	if (request.method !== 'GET') return;
 
 	const url = new URL(request.url);
-	// Never intercept cross-origin (Supabase auth/sync, Google Fonts) — let them hit the network.
+	// Never intercept cross-origin (Supabase auth/sync, Google Fonts).
 	if (url.origin !== self.location.origin) return;
 
 	event.respondWith(
 		(async () => {
 			const cache = await caches.open(CACHE);
 
-			// Cache-first for immutable build assets.
-			if (PRECACHE.includes(url.pathname)) {
-				const cached = await cache.match(url.pathname);
-				if (cached) return cached;
+			// Immutable hashed build assets: cache-first.
+			if (IMMUTABLE.has(url.pathname)) {
+				const hit = await cache.match(url.pathname);
+				if (hit) return hit;
+				const res = await fetch(request);
+				if (res.ok) cache.put(url.pathname, res.clone());
+				return res;
 			}
 
-			// Network-first for everything else, falling back to cache, then the app shell.
+			// Navigations, the prerendered shell, and static files: network-first.
 			try {
-				const response = await fetch(request);
-				if (response.ok && response.type === 'basic') cache.put(request, response.clone());
-				return response;
+				const res = await fetch(request);
+				if (res.ok && res.type === 'basic') cache.put(request, res.clone());
+				return res;
 			} catch {
 				const cached = await cache.match(request);
 				if (cached) return cached;

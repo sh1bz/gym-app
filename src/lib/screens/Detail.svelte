@@ -64,7 +64,7 @@
 	const detDelta = $derived(
 		(hDelta === 0 ? '0' : (hDelta > 0 ? '+' : '−') + fmt(Math.abs(hDelta))) + dUnit + ' · ' + nW + ' wk'
 	);
-	const detDeltaColor = $derived(hDelta > 0 ? '#36e0a0' : hDelta < 0 ? 'var(--warn)' : 'var(--mute)');
+	const detDeltaColor = $derived(hDelta > 0 ? 'var(--good)' : hDelta < 0 ? 'var(--warn)' : 'var(--mute)');
 	const detNow = $derived(hasChart ? fmt(series[series.length - 1]) + dUnit : '');
 
 	const chartXLabels = $derived(
@@ -194,11 +194,11 @@
 		{#each editRows as r}
 			<div class="row" style="border-bottom:{r.bb};">
 				<span class="rlabel">{r.label}</span>
-				<button class="step" onclick={r.minus} style="opacity:{r.op};">
+				<button class="step" onclick={r.minus} style="opacity:{r.op};" aria-label="Decrease {r.label}">
 					<Icon name="minus" size={18} stroke={3} />
 				</button>
 				<span class="rval mono">{r.val}</span>
-				<button class="step" onclick={r.plus} style="opacity:{r.op};">
+				<button class="step" onclick={r.plus} style="opacity:{r.op};" aria-label="Increase {r.label}">
 					<Icon name="plus" size={18} stroke={3} />
 				</button>
 			</div>

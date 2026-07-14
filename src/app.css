@@ -5,7 +5,7 @@
 	--surface-hi: #232733;
 	--line: #2c3040;
 	--txt: #f4f5f8;
-	--mute: #767b8c;
+	--mute: #7e8493;
 	--accent: #ff4e27;
 	--accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
 	--accent-glow: color-mix(in srgb, var(--accent) 45%, transparent);

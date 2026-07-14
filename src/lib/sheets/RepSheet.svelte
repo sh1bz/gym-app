@@ -22,13 +22,13 @@
 		<div class="title">Reps completed</div>
 		<div class="sub">target was <b class="mono">{target}</b></div>
 		<div class="stepwrap">
-			<button class="stepbtn" onclick={() => store.repMinus()}>
+			<button class="stepbtn" onclick={() => store.repMinus()} aria-label="One fewer rep">
 				<Icon name="minus" size={30} stroke={3} />
 			</button>
 			<div class="repnum">
 				<RollNumber value={store.repCount} tick={store.rTick} dir={store.rDir} size="86px" />
 			</div>
-			<button class="stepbtn" onclick={() => store.repPlus()}>
+			<button class="stepbtn" onclick={() => store.repPlus()} aria-label="One more rep">
 				<Icon name="plus" size={30} stroke={3} />
 			</button>
 		</div>

@@ -54,7 +54,12 @@
 		return all;
 	});
 
-	const perfSub = $derived(perfAll.length + ' exercises tracked · tap one to see its curve');
+	const hasHistory = $derived(Object.keys(store.history || {}).length > 0);
+	const perfSub = $derived(
+		hasHistory
+			? perfAll.length + ' exercises · tap one to see its curve'
+			: 'Your progress builds here as you log sessions'
+	);
 
 	const perfSections = $derived(
 		CATS.map((cat) => {
@@ -109,7 +114,17 @@
 			</div>
 		</div>
 
-		{#each perfSections as ps}
+		{#if !hasHistory}
+			<div class="empty">
+				<div class="empty-title">No sessions logged yet</div>
+				<div class="empty-sub">
+					Finish a workout and your streak, per-lift trends and progress charts start
+					building here.
+				</div>
+			</div>
+		{/if}
+
+		{#each hasHistory ? perfSections : [] as ps}
 			<div style="margin-bottom:22px;">
 				<div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 4px 10px;">
 					<span style="font-size:16px;font-weight:700;letter-spacing:-.01em;">{ps.name}</span>
@@ -117,7 +132,7 @@
 				</div>
 				<div style="background:var(--surface);border-radius:20px;overflow:hidden;">
 					{#each ps.rows as e}
-						<div class="row" onclick={e.open} style="border-bottom:{e.bb};">
+						<button class="row" onclick={e.open} style="border-bottom:{e.bb};">
 							<span class="tile mono">{e.count}×</span>
 							<div style="flex:1;min-width:0;">
 								<div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{e.name}</div>
@@ -135,7 +150,7 @@
 									{/if}
 								</span>
 							</div>
-						</div>
+						</button>
 					{/each}
 				</div>
 			</div>
@@ -185,10 +200,32 @@
 		gap: 13px;
 		padding: 12px 14px;
 		cursor: pointer;
-		transition: background .15s;
+		transition: background 0.15s;
+		width: 100%;
+		text-align: left;
+		background: none;
+		border: none;
+		color: var(--txt);
+		font: inherit;
 	}
 	.row:active {
 		background: var(--surface-hi);
+	}
+	.empty {
+		text-align: center;
+		padding: 40px 24px;
+	}
+	.empty-title {
+		font-size: 16px;
+		font-weight: 700;
+		color: var(--txt);
+	}
+	.empty-sub {
+		margin-top: 8px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--mute);
+		line-height: 1.55;
 	}
 	.tile {
 		width: 38px;

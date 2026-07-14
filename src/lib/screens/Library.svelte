@@ -49,7 +49,7 @@
 <div class="screen">
 	<div class="topbar" style="animation:rise .5s cubic-bezier(.2,.8,.3,1.1) .03s both;">
 		<button class="back" onclick={() => store.libBack()}>
-			<svg viewBox="0 0 24 24" class="chev"><polyline points="15 6 9 12 15 18"></polyline></svg>
+			<Icon name="chevron-left" size={14} stroke={2.6} style="stroke:var(--mute);" />
 			{libBackLabel}
 		</button>
 	</div>
@@ -124,15 +124,6 @@
 		color: var(--mute);
 		text-transform: uppercase;
 		padding: 4px 0;
-	}
-	.chev {
-		width: 14px;
-		height: 14px;
-		stroke: var(--mute);
-		stroke-width: 2.6;
-		fill: none;
-		stroke-linecap: round;
-		stroke-linejoin: round;
 	}
 
 	.body {
