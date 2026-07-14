@@ -1,13 +1,13 @@
 <script>
 	import { store } from '$lib/store.svelte.js';
-	import { dateStr, ago, fmtMin, exSecs, exLast } from '$lib/logic.js';
+	import { dateStr, ago, fmtMin, exSecs } from '$lib/logic.js';
 	import Icon from '$lib/components/Icon.svelte';
 
 	const today = $derived(dateStr());
 
-	function trendInfo(x) {
-		if (x.trend === 'up') return { name: 'trend-up', color: 'var(--good)' };
-		if (x.trend === 'down') return { name: 'trend-down', color: 'var(--warn)' };
+	function trendInfo(trend) {
+		if (trend === 'up') return { name: 'trend-up', color: 'var(--good)' };
+		if (trend === 'down') return { name: 'trend-down', color: 'var(--warn)' };
 		return { name: 'trend-flat', color: 'var(--mute)' };
 	}
 
@@ -45,8 +45,8 @@
 							x.reps +
 							' reps · ' +
 							fmtMin(exSecs(x)),
-						last: exLast(x),
-						trend: trendInfo(x),
+						last: store.lastTimeFor(x),
+						trend: trendInfo(store.trendFor(x)),
 						tileBg: isCur ? 'var(--accent)' : 'var(--accent-soft)',
 						tileColor: isCur ? 'var(--on-accent)' : 'var(--accent)',
 						rowOp: done ? 0.45 : 1,

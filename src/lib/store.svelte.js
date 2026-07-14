@@ -9,7 +9,12 @@ import {
 	findCat,
 	sortDays,
 	streakOf,
-	seedCount
+	seedCount,
+	genHistory,
+	realSeries,
+	trendOf,
+	lastOf,
+	recommend
 } from './logic.js';
 import { supabase, supabaseEnabled } from './supabase.js';
 
@@ -41,6 +46,11 @@ export class GymStore {
 	libCat = $state(null);
 	libSwapIdx = $state(null);
 	chartWeeks = $state(8);
+	// Real per-exercise session history: { [name]: [{ t, w, reps, top }] }.
+	// Powers real charts/counts/trends/recommendations; seeded stubs fill in until it grows.
+	history = $state({});
+	// Working sets logged during the current live session (summarised on save).
+	sessionLog = $state([]);
 
 	// ---- settings (persisted) ----
 	accent = $state('#ff4e27');
@@ -107,7 +117,32 @@ export class GymStore {
 		return parseFloat(this.microStep ?? '2.5') || 2.5;
 	}
 	timesDone(name) {
-		return seedCount(name) + (this.exCount?.[name] || 0);
+		// Seeded baseline keeps the UI alive from day one; real sessions stack on top.
+		return seedCount(name) + (this.history?.[name]?.length || 0);
+	}
+	recordsOf(name) {
+		return this.history?.[name] || null;
+	}
+	/** Real trend for an exercise, falling back to its seeded trend. */
+	trendFor(exercise) {
+		return trendOf(exercise, this.recordsOf(exercise.name));
+	}
+	/** "last time" string: real most-recent performance, else the seeded value. */
+	lastTimeFor(exercise) {
+		const r = lastOf(this.recordsOf(exercise.name));
+		if (!r) return exLast(exercise);
+		return (exercise.start === 0 ? 'BW' : fmt(r.w)) + ' × ' + r.reps;
+	}
+	/** Chart series (numbers) for `weeks`: real when we have enough, else seeded. */
+	chartValues(exercise, weeks) {
+		return realSeries(exercise, this.recordsOf(exercise.name), weeks) ?? genHistory(exercise, weeks);
+	}
+	/** Weight recommendation for an exercise (spec §5). */
+	recommendFor(exercise) {
+		return recommend(exercise, this.recordsOf(exercise.name));
+	}
+	get currentRec() {
+		return this.recommendFor(this.curEx);
 	}
 
 	// ---------- lifecycle ----------
@@ -130,8 +165,8 @@ export class GymStore {
 	applyBlob(p) {
 		const fields = [
 			'program', 'day', 'ex', 'setIdx', 'weight', 'screen', 'sessionOn', 'lastDone',
-			'sessions', 'exCount', 'startedAt', 'restEnd', 'restTotal', 'loggedText', 'loggedName',
-			'nextLabel', 'detDay', 'detIdx', 'edDay', 'accent', 'microStep', 'haptics'
+			'sessions', 'exCount', 'history', 'startedAt', 'restEnd', 'restTotal', 'loggedText',
+			'loggedName', 'nextLabel', 'detDay', 'detIdx', 'edDay', 'accent', 'microStep', 'haptics'
 		];
 		for (const f of fields) if (p[f] !== undefined) this[f] = p[f];
 	}
@@ -196,7 +231,7 @@ export class GymStore {
 			program: this.program, day: this.day, ex: this.ex, setIdx: this.setIdx, weight: this.weight,
 			screen: ['active', 'rest', 'home'].includes(this.screen) ? this.screen : 'home',
 			sessionOn: this.sessionOn, lastDone: this.lastDone, sessions: this.sessions,
-			exCount: this.exCount, startedAt: this.startedAt, restEnd: this.restEnd,
+			exCount: this.exCount, history: this.history, startedAt: this.startedAt, restEnd: this.restEnd,
 			restTotal: this.restTotal, loggedText: this.loggedText, loggedName: this.loggedName,
 			nextLabel: this.nextLabel, detDay: this.detDay, detIdx: this.detIdx, edDay: this.edDay,
 			accent: this.accent, microStep: this.microStep, haptics: this.haptics
@@ -383,41 +418,47 @@ export class GymStore {
 		this.buzz([10, 40, 10]);
 		const w = this.curEx;
 		const logged = fmt(this.weight) + ' × ' + this.repCount;
-		this.logSetRow({
+		const entry = {
 			exerciseName: w.name,
 			setIndex: this.setIdx,
 			weight: this.weight,
 			repsTarget: w.reps,
 			repsActual: this.repCount,
 			type: 'working'
-		});
+		};
+		this.sessionLog = [...this.sessionLog, entry];
+		this.logSetRow(entry);
 		this.sheetOpen = false;
 		setTimeout(() => this.startRest(logged), 160);
 	}
 	skipSet() {
 		const w = this.curEx;
-		this.logSetRow({
+		const entry = {
 			exerciseName: w.name,
 			setIndex: this.setIdx,
 			weight: this.weight,
 			repsTarget: w.reps,
 			repsActual: 0,
 			type: 'skipped'
-		});
+		};
+		this.sessionLog = [...this.sessionLog, entry];
+		this.logSetRow(entry);
 		this.showToast('Set skipped');
 		setTimeout(() => this.startRest('skipped'), 300);
 	}
 	warmup() {
 		const w = this.curEx;
 		this.buzz(8);
-		this.logSetRow({
+		const entry = {
 			exerciseName: w.name,
 			setIndex: this.setIdx,
 			weight: this.weight,
 			repsTarget: w.reps,
 			repsActual: this.repCount,
 			type: 'warmup'
-		});
+		};
+		this.sessionLog = [...this.sessionLog, entry];
+		this.logSetRow(entry);
 		this.showToast('Logged as warm-up');
 	}
 
@@ -457,16 +498,31 @@ export class GymStore {
 		this.endSheetOpen = false;
 		this.ending = false;
 		if (save) {
-			this.lastDone = { ...this.lastDone, [this.program[this.day].id]: Date.now() };
-			this.sessions = [...(this.sessions || []), Date.now()];
-			const exCount = { ...(this.exCount || {}) };
-			wk.forEach((x, i) => {
-				if (i < this.ex || (i === this.ex && this.setIdx > 0))
-					exCount[x.name] = (exCount[x.name] || 0) + 1;
-			});
-			this.exCount = exCount;
+			const now = Date.now();
+			this.lastDone = { ...this.lastDone, [this.program[this.day].id]: now };
+			this.sessions = [...(this.sessions || []), now];
+			// Summarise this session's working sets into one history record per exercise:
+			// heaviest working set's weight/reps, and whether every working set hit target.
+			const byEx = {};
+			for (const l of this.sessionLog) {
+				if (l.type !== 'working') continue;
+				(byEx[l.exerciseName] ??= []).push(l);
+			}
+			const history = { ...(this.history || {}) };
+			for (const [name, sets] of Object.entries(byEx)) {
+				const top = sets.every((s) => s.repsActual >= s.repsTarget);
+				const heaviest = sets.reduce((a, b) => (b.weight > a.weight ? b : a));
+				history[name] = [...(history[name] || []), {
+					t: now,
+					w: heaviest.weight,
+					reps: heaviest.repsActual,
+					top
+				}];
+			}
+			this.history = history;
 			this.animateStreak();
 		}
+		this.sessionLog = [];
 		this.persist();
 		this.showToast(save ? 'Session saved' : 'Session discarded');
 	}
@@ -482,7 +538,7 @@ export class GymStore {
 			}
 			this.ex += 1;
 			this.setIdx = 0;
-			this.weight = wk[this.ex].start;
+			this.weight = this.recommendFor(wk[this.ex]).weight;
 			this.exTick++;
 		}
 		this.screen = 'active';
@@ -506,7 +562,8 @@ export class GymStore {
 		this.elapsed = '00:00';
 		this.ex = 0;
 		this.setIdx = 0;
-		this.weight = wk[0].start;
+		this.sessionLog = [];
+		this.weight = this.recommendFor(wk[0]).weight;
 		this.repCount = wk[0].reps;
 		this.screen = 'active';
 		this.exTick++;

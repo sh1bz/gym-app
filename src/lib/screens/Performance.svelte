@@ -1,7 +1,7 @@
 <script>
 	import { store } from '$lib/store.svelte.js';
 	import Icon from '$lib/components/Icon.svelte';
-	import { streakOf, weekStart, dayStart, exLast, findCat } from '$lib/logic.js';
+	import { streakOf, weekStart, dayStart, findCat } from '$lib/logic.js';
 	import { CATS, DAY_MS } from '$lib/seed.js';
 
 	// ---- streak ----
@@ -33,11 +33,11 @@
 	);
 
 	// ---- performance ----
-	const trendBits = (x) => ({
-		trendUp: x.trend === 'up',
-		trendDown: x.trend === 'down',
-		trendFlat: !x.trend || x.trend === 'flat',
-		trendColor: x.trend === 'up' ? '#36e0a0' : x.trend === 'down' ? 'var(--warn)' : 'var(--mute)'
+	const trendBits = (trend) => ({
+		trendUp: trend === 'up',
+		trendDown: trend === 'down',
+		trendFlat: !trend || trend === 'flat',
+		trendColor: trend === 'up' ? 'var(--good)' : trend === 'down' ? 'var(--warn)' : 'var(--mute)'
 	});
 
 	const perfAll = $derived.by(() => {
@@ -66,8 +66,8 @@
 					name: o.x.name,
 					count: store.timesDone(o.x.name),
 					meta: o.dayName + ' · ' + o.x.sets + ' × ' + o.x.reps,
-					last: exLast(o.x),
-					...trendBits(o.x),
+					last: store.lastTimeFor(o.x),
+					...trendBits(store.trendFor(o.x)),
 					bb: k < items.length - 1 ? '1px solid var(--line)' : 'none',
 					open: () => store.openDetail(o.di, o.i, 'perf')
 				}))

@@ -1,6 +1,6 @@
 <script>
 	import { store } from '$lib/store.svelte.js';
-	import { genHistory, weekDateLabel, fmt, fmtMin, setSecs, exSecs } from '$lib/logic.js';
+	import { weekDateLabel, fmt, fmtMin, setSecs, exSecs } from '$lib/logic.js';
 	import Icon from '$lib/components/Icon.svelte';
 
 	const dx = $derived.by(() => {
@@ -35,7 +35,7 @@
 	const detCount = $derived(store.timesDone(dx.name));
 
 	// history + chart
-	const hist = $derived(genHistory(dx, nW));
+	const hist = $derived(store.chartValues(dx, nW));
 	const hMin = $derived(Math.min(...hist));
 	const hMax = $derived(Math.max(...hist));
 	const hRange = $derived(hMax - hMin || 1);

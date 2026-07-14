@@ -1,11 +1,12 @@
 <script>
 	import { store } from '$lib/store.svelte.js';
-	import { fmt, exLast } from '$lib/logic.js';
+	import { fmt } from '$lib/logic.js';
 	import Icon from '$lib/components/Icon.svelte';
 	import RollNumber from '$lib/components/RollNumber.svelte';
 	import PrimaryButton from '$lib/components/PrimaryButton.svelte';
 
 	const w = $derived(store.curEx);
+	const rec = $derived(store.currentRec);
 	const isBW = $derived(w.start === 0);
 	const weightText = $derived(isBW ? 'BW' : fmt(store.weight));
 	const weightSize = $derived(
@@ -34,7 +35,14 @@
 	{#key store.exTick}
 		<div class="exblock" style="animation:rise .5s cubic-bezier(.2,.8,.3,1.1) .09s both;">
 			<div class="exname" style="animation:exIn .45s cubic-bezier(.2,.8,.3,1.1);">{w.name}</div>
-			<div class="lastpill">last time&nbsp;<span class="mono val">{exLast(w)}</span></div>
+			<div class="pillrow">
+				<div class="lastpill">last time&nbsp;<span class="mono val">{store.lastTimeFor(w)}</span></div>
+				{#if rec.kind === 'progress' && w.start !== 0}
+					<div class="rectag up"><Icon name="trend-up" size={12} stroke={3} /> +2.5 kg</div>
+				{:else if rec.kind === 'deload'}
+					<div class="rectag down"><Icon name="trend-down" size={12} stroke={3} /> deload</div>
+				{/if}
+			</div>
 		</div>
 	{/key}
 
@@ -151,8 +159,14 @@
 		letter-spacing: -0.01em;
 		line-height: 1;
 	}
-	.lastpill {
+	.pillrow {
 		margin-top: 11px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.lastpill {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
@@ -163,6 +177,26 @@
 		border: 1px solid var(--line);
 		padding: 6px 12px;
 		border-radius: 999px;
+	}
+	.rectag {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 12px;
+		font-weight: 700;
+		letter-spacing: 0.03em;
+		padding: 6px 11px;
+		border-radius: 999px;
+	}
+	.rectag.up {
+		color: var(--accent);
+		background: var(--accent-soft);
+		border: 1px solid var(--accent);
+	}
+	.rectag.down {
+		color: var(--warn);
+		background: color-mix(in srgb, var(--warn) 12%, transparent);
+		border: 1px solid var(--warn);
 	}
 	.lastpill .val {
 		color: var(--txt);
