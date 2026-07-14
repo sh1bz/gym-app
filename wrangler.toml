@@ -1,0 +1,6 @@
+name = "gym-app"
+pages_build_output_dir = ".svelte-kit/cloudflare"
+compatibility_date = "2024-11-01"
+# SvelteKit's server runtime imports node:async_hooks; nodejs_compat lets the
+# SPA-fallback Worker run without throwing at runtime.
+compatibility_flags = ["nodejs_compat"]
