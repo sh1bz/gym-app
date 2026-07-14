@@ -872,6 +872,50 @@ export class GymStore {
 		this.showToast('Training data cleared');
 	}
 
+	/**
+	 * Factory reset: everything back to a brand-new install — the seeded
+	 * Push/Pull/Legs program, default settings, and day-one demo stats.
+	 */
+	factoryReset() {
+		this.buzz([10, 40, 10]);
+		cancelAnimationFrame(this._raf);
+		this.program = clone(SEED_PROGRAM);
+		this.day = 0;
+		this.ex = 0;
+		this.setIdx = 0;
+		this.sessionOn = false;
+		this.startedAt = Date.now();
+		this.restEnd = 0;
+		this.restTotal = 180;
+		this.sessionLog = [];
+		this.loggedText = '';
+		this.loggedName = '';
+		this.nextLabel = '';
+		this.lastDone = null; // null → normalize() re-seeds the demo dates/sessions
+		this.sessions = null;
+		this.exCount = {};
+		this.history = {};
+		this.fresh = false; // restore day-one seeded demo stats
+		this.detDay = 0;
+		this.detIdx = 0;
+		this.edDay = 0;
+		this.chartWeeks = 8;
+		this.accent = '#ff4e27';
+		this.microStep = '2.5';
+		this.haptics = true;
+		this.applyAccent();
+		this.weight = this.program[0].workout[0].start;
+		this.repCount = this.program[0].workout[0].reps;
+		this.normalize(); // seeds lastDone/sessions like a fresh install
+		this.screen = 'home';
+		this.settingsOpen = false;
+		this.streakDisp = null;
+		this.animateStreak();
+		this.persist();
+		this.deleteAllSetLogs();
+		this.showToast('Factory reset complete');
+	}
+
 	deleteAllSetLogs() {
 		if (!supabaseEnabled || !this.user) return;
 		supabase

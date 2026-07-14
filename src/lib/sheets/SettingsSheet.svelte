@@ -11,16 +11,16 @@
 	let sent = $state(false);
 	let err = $state('');
 
-	let confirmReset = $state(false);
-	let resetTimer;
-	function armReset() {
-		if (confirmReset) {
-			store.resetTrainingData();
-			confirmReset = false;
+	let armed = $state(null); // 'clear' | 'factory'
+	let armTimer;
+	function arm(kind, run) {
+		if (armed === kind) {
+			run();
+			armed = null;
 		} else {
-			confirmReset = true;
-			clearTimeout(resetTimer);
-			resetTimer = setTimeout(() => (confirmReset = false), 3000);
+			armed = kind;
+			clearTimeout(armTimer);
+			armTimer = setTimeout(() => (armed = null), 3000);
 		}
 	}
 
@@ -118,9 +118,13 @@
 		{/if}
 
 		<div class="label">Data</div>
-		<button class="reset" class:armed={confirmReset} onclick={armReset}>
-			{#if confirmReset}
-				<Icon name="x" size={16} stroke={3} /> Tap again to clear everything
+		<button
+			class="reset"
+			class:armed={armed === 'clear'}
+			onclick={() => arm('clear', () => store.resetTrainingData())}
+		>
+			{#if armed === 'clear'}
+				<Icon name="x" size={16} stroke={3} /> Tap again to clear training data
 			{:else}
 				Clear training data
 			{/if}
@@ -128,6 +132,22 @@
 		<div class="note small">
 			Wipes all logged sessions, streak, history & progress on every device. Your days and
 			exercises stay. Can't be undone.
+		</div>
+
+		<button
+			class="reset factory"
+			class:armed={armed === 'factory'}
+			onclick={() => arm('factory', () => store.factoryReset())}
+		>
+			{#if armed === 'factory'}
+				<Icon name="x" size={16} stroke={3} /> Tap again to factory reset
+			{:else}
+				Factory reset
+			{/if}
+		</button>
+		<div class="note small">
+			Resets everything to a brand-new install — the default Push / Pull / Legs program and settings.
+			Your custom days and edits are lost too. Can't be undone.
 		</div>
 
 		<button class="done" onclick={() => store.closeSettings()}>Done</button>
@@ -387,6 +407,9 @@
 		background: color-mix(in srgb, var(--warn) 14%, transparent);
 		border-color: var(--warn);
 		color: var(--warn);
+	}
+	.reset.factory {
+		margin-top: 18px;
 	}
 	.note.small {
 		font-size: 12px;
