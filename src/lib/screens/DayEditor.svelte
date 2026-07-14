@@ -17,6 +17,7 @@
 		ed.workout.map((x, i) => ({
 			i,
 			name: x.name,
+			icon: x.icon,
 			meta:
 				(x.cat || '—') +
 				' · ' +
@@ -64,6 +65,7 @@
 			<div class="card">
 				{#each rows as r (r.i)}
 					<div class="row" style="border-bottom:{r.hasBorder ? '1px solid var(--line)' : 'none'};">
+						<span class="tile"><Icon name={r.icon} size={20} stroke={2.2} /></span>
 						<div
 							class="rowmid"
 							onclick={() => store.openDetail(store.edDay, r.i, 'editDay')}
@@ -174,6 +176,17 @@
 		align-items: center;
 		gap: 12px;
 		padding: 12px 14px;
+	}
+	.tile {
+		width: 36px;
+		height: 36px;
+		border-radius: 11px;
+		flex: 0 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--accent-soft);
+		color: var(--accent);
 	}
 	.rowmid {
 		flex: 1;

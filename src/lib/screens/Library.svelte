@@ -2,6 +2,7 @@
 	import { store } from '$lib/store.svelte.js';
 	import { EXDB, CATS } from '$lib/seed.js';
 	import { fmt } from '$lib/logic.js';
+	import Icon from '$lib/components/Icon.svelte';
 
 	const ed = $derived(store.program[store.edDay] ?? store.program[0]);
 	const dayNames = $derived(ed.workout.map((x) => x.name));
@@ -59,6 +60,7 @@
 						style="opacity:{x.inDay ? 0.45 : 1};"
 						onclick={() => store.pickExercise(x)}
 					>
+						<span class="tile"><Icon name={x.icon} size={21} stroke={2.2} /></span>
 						<div class="row-main">
 							<div class="row-name">{x.name}</div>
 							<div class="row-meta">{x.meta}</div>
@@ -182,6 +184,17 @@
 	}
 	.row:active {
 		background: var(--surface-hi);
+	}
+	.tile {
+		width: 38px;
+		height: 38px;
+		border-radius: 11px;
+		flex: 0 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--accent-soft);
+		color: var(--accent);
 	}
 	.row-main {
 		flex: 1;
