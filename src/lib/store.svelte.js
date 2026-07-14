@@ -56,6 +56,9 @@ export class GymStore {
 	accent = $state('#ff4e27');
 	microStep = $state('2.5');
 	haptics = $state(true);
+	// After a user reset, stop showing the day-one seeded demo stats and show
+	// real (empty) data instead. A brand-new install leaves this false.
+	fresh = $state(false);
 
 	// ---- transient UI state ----
 	repCount = $state(8);
@@ -118,24 +121,32 @@ export class GymStore {
 	}
 	timesDone(name) {
 		// Seeded baseline keeps the UI alive from day one; real sessions stack on top.
-		return seedCount(name) + (this.history?.[name]?.length || 0);
+		// After a reset (`fresh`), only real sessions count.
+		const real = this.history?.[name]?.length || 0;
+		return this.fresh ? real : seedCount(name) + real;
 	}
 	recordsOf(name) {
 		return this.history?.[name] || null;
 	}
-	/** Real trend for an exercise, falling back to its seeded trend. */
+	/** Real trend for an exercise; flat when there's no real history after a reset. */
 	trendFor(exercise) {
-		return trendOf(exercise, this.recordsOf(exercise.name));
+		const recs = this.recordsOf(exercise.name);
+		if ((!recs || recs.length < 2) && this.fresh) return 'flat';
+		return trendOf(exercise, recs);
 	}
-	/** "last time" string: real most-recent performance, else the seeded value. */
+	/** "last time" string: real most-recent performance, else the configured/seeded anchor. */
 	lastTimeFor(exercise) {
 		const r = lastOf(this.recordsOf(exercise.name));
-		if (!r) return exLast(exercise);
-		return (exercise.start === 0 ? 'BW' : fmt(r.w)) + ' × ' + r.reps;
+		if (r) return (exercise.start === 0 ? 'BW' : fmt(r.w)) + ' × ' + r.reps;
+		if (this.fresh) return (exercise.start === 0 ? 'BW' : fmt(exercise.start)) + ' × ' + exercise.reps;
+		return exLast(exercise);
 	}
-	/** Chart series (numbers) for `weeks`: real when we have enough, else seeded. */
+	/** Chart series (numbers) for `weeks`: real when we have enough, else seeded (or flat after reset). */
 	chartValues(exercise, weeks) {
-		return realSeries(exercise, this.recordsOf(exercise.name), weeks) ?? genHistory(exercise, weeks);
+		const real = realSeries(exercise, this.recordsOf(exercise.name), weeks);
+		if (real) return real;
+		if (this.fresh) return new Array(weeks).fill(exercise.start === 0 ? exercise.reps : exercise.start);
+		return genHistory(exercise, weeks);
 	}
 	/** Weight recommendation for an exercise (spec §5). */
 	recommendFor(exercise) {
@@ -166,7 +177,8 @@ export class GymStore {
 		const fields = [
 			'program', 'day', 'ex', 'setIdx', 'weight', 'screen', 'sessionOn', 'lastDone',
 			'sessions', 'exCount', 'history', 'startedAt', 'restEnd', 'restTotal', 'loggedText',
-			'loggedName', 'nextLabel', 'detDay', 'detIdx', 'edDay', 'accent', 'microStep', 'haptics'
+			'loggedName', 'nextLabel', 'detDay', 'detIdx', 'edDay', 'accent', 'microStep', 'haptics',
+			'fresh'
 		];
 		for (const f of fields) if (p[f] !== undefined) this[f] = p[f];
 	}
@@ -234,7 +246,7 @@ export class GymStore {
 			exCount: this.exCount, history: this.history, startedAt: this.startedAt, restEnd: this.restEnd,
 			restTotal: this.restTotal, loggedText: this.loggedText, loggedName: this.loggedName,
 			nextLabel: this.nextLabel, detDay: this.detDay, detIdx: this.detIdx, edDay: this.edDay,
-			accent: this.accent, microStep: this.microStep, haptics: this.haptics
+			accent: this.accent, microStep: this.microStep, haptics: this.haptics, fresh: this.fresh
 		};
 	}
 
@@ -828,6 +840,48 @@ export class GymStore {
 		this.haptics = !this.haptics;
 		this.buzz(10);
 		this.persist();
+	}
+
+	/**
+	 * Clear all training data (logged sessions, streak, history, counts) and any
+	 * in-progress session, keeping the program. Wipes local + cloud + set_logs.
+	 */
+	resetTrainingData() {
+		this.buzz([10, 40, 10]);
+		cancelAnimationFrame(this._raf);
+		this.sessions = [];
+		this.history = {};
+		this.exCount = {};
+		this.lastDone = {}; // truthy empty → normalize() won't re-seed demo dates
+		this.fresh = true;
+		this.sessionOn = false;
+		this.screen = 'home';
+		this.ex = 0;
+		this.setIdx = 0;
+		this.restEnd = 0;
+		this.restTotal = 180;
+		this.sessionLog = [];
+		this.loggedText = '';
+		this.loggedName = '';
+		this.nextLabel = '';
+		this.streakDisp = 0;
+		this.settingsOpen = false;
+		this.weight = this.program[this.day]?.workout[0]?.start ?? 0;
+		this.persist();
+		this.deleteAllSetLogs();
+		this.showToast('Training data cleared');
+	}
+
+	deleteAllSetLogs() {
+		if (!supabaseEnabled || !this.user) return;
+		supabase
+			.from('set_logs')
+			.delete()
+			.eq('user_id', this.user.id)
+			.then(
+				() => {},
+				() => {}
+			);
 	}
 }
 

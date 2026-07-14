@@ -11,6 +11,19 @@
 	let sent = $state(false);
 	let err = $state('');
 
+	let confirmReset = $state(false);
+	let resetTimer;
+	function armReset() {
+		if (confirmReset) {
+			store.resetTrainingData();
+			confirmReset = false;
+		} else {
+			confirmReset = true;
+			clearTimeout(resetTimer);
+			resetTimer = setTimeout(() => (confirmReset = false), 3000);
+		}
+	}
+
 	async function send() {
 		if (!email.trim()) return;
 		sending = true;
@@ -103,6 +116,19 @@
 			</div>
 			{#if err}<div class="err">{err}</div>{/if}
 		{/if}
+
+		<div class="label">Data</div>
+		<button class="reset" class:armed={confirmReset} onclick={armReset}>
+			{#if confirmReset}
+				<Icon name="x" size={16} stroke={3} /> Tap again to clear everything
+			{:else}
+				Clear training data
+			{/if}
+		</button>
+		<div class="note small">
+			Wipes all logged sessions, streak, history & progress on every device. Your days and
+			exercises stay. Can't be undone.
+		</div>
 
 		<button class="done" onclick={() => store.closeSettings()}>Done</button>
 	</div>
@@ -333,6 +359,39 @@
 		font-size: 12px;
 		color: var(--warn);
 		font-weight: 600;
+	}
+	.reset {
+		width: 100%;
+		height: 56px;
+		border-radius: 16px;
+		border: 1px solid var(--line);
+		background: var(--surface);
+		color: var(--warn);
+		font-weight: 700;
+		font-size: 15px;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		transition:
+			transform 0.12s cubic-bezier(0.3, 1.4, 0.5, 1),
+			background 0.15s,
+			border-color 0.15s;
+	}
+	.reset:active {
+		transform: scale(0.98);
+	}
+	.reset.armed {
+		background: color-mix(in srgb, var(--warn) 14%, transparent);
+		border-color: var(--warn);
+		color: var(--warn);
+	}
+	.note.small {
+		font-size: 12px;
+		margin-top: 10px;
+		line-height: 1.45;
 	}
 	.done {
 		width: 100%;
