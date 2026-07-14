@@ -1,29 +1,47 @@
 <script>
 	import { store } from '$lib/store.svelte.js';
-	import { EXDB, CATS } from '$lib/seed.js';
+	import { EXDB, CATS, patternOfSplit, PATTERN_LABEL } from '$lib/seed.js';
 	import { fmt } from '$lib/logic.js';
 	import Icon from '$lib/components/Icon.svelte';
 
 	const ed = $derived(store.program[store.edDay] ?? store.program[0]);
 	const dayNames = $derived(ed.workout.map((x) => x.name));
+	// Movement pattern of the day we're building (push/pull/legs/core), or null.
+	const dayPat = $derived(patternOfSplit(ed.split));
+	const dayPatLabel = $derived(dayPat ? PATTERN_LABEL[dayPat] : '');
 
-	const libCats = $derived(CATS.map((c) => ({ name: c, count: EXDB[c].length })));
+	// Categories, sorted so the ones richest in the day's pattern come first.
+	const libCats = $derived.by(() => {
+		const list = CATS.map((c) => ({
+			name: c,
+			count: EXDB[c].length,
+			match: EXDB[c].filter((e) => e.pattern === dayPat).length
+		}));
+		if (dayPat) list.sort((a, b) => b.match - a.match);
+		return list;
+	});
 
-	const libRows = $derived(
-		(store.libCat ? EXDB[store.libCat] : []).map((x, i, arr) => ({
+	// Exercises in the chosen category, with matching-pattern ones floated to the top.
+	const libRows = $derived.by(() => {
+		const list = (store.libCat ? EXDB[store.libCat] : []).map((x) => ({
 			...x,
 			inDay: dayNames.includes(x.name),
-			meta: `${x.sets} × ${x.reps} · ${x.start === 0 ? 'bodyweight' : fmt(x.start) + ' kg'} · rest ${x.rest}s`,
-			isLast: i === arr.length - 1
-		}))
-	);
+			match: !!dayPat && x.pattern === dayPat,
+			patLabel: PATTERN_LABEL[x.pattern] || '',
+			meta: `${x.sets} × ${x.reps} · ${x.start === 0 ? 'bodyweight' : fmt(x.start) + ' kg'} · rest ${x.rest}s`
+		}));
+		if (dayPat) list.sort((a, b) => (b.match ? 1 : 0) - (a.match ? 1 : 0));
+		return list.map((x, i, arr) => ({ ...x, isLast: i === arr.length - 1 }));
+	});
 
 	const libBackLabel = $derived(store.libCat ? 'Categories' : ed.split);
 	const libTitle = $derived(store.libCat || 'Choose a category');
 	const libSub = $derived(
 		store.libCat
-			? (store.libSwapIdx != null ? 'tap to swap in' : 'tap to add to ' + ed.split)
-			: (store.libSwapIdx != null ? 'swapping an exercise on ' + ed.split : 'adding to ' + ed.split)
+			? (store.libSwapIdx != null ? 'tap to swap in' : 'tap to add to ' + ed.split) +
+					(dayPat ? ' · ' + dayPatLabel.toLowerCase() + ' moves first' : '')
+			: (store.libSwapIdx != null ? 'swapping an exercise on ' + ed.split : 'adding to ' + ed.split) +
+					(dayPat ? ' · sorted for ' + dayPatLabel.toLowerCase() : '')
 	);
 	const libShowCats = $derived(!store.libCat);
 </script>
@@ -47,7 +65,11 @@
 				{#each libCats as c}
 					<button class="cat" onclick={() => store.pickCategory(c.name)}>
 						<div class="cat-name">{c.name}</div>
-						<div class="cat-count">{c.count} exercises</div>
+						<div class="cat-count">
+							{c.count} exercises{#if dayPat && c.match}<span class="cat-match">
+									· {c.match} {dayPatLabel.toLowerCase()}</span
+								>{/if}
+						</div>
 					</button>
 				{/each}
 			</div>
@@ -62,7 +84,12 @@
 					>
 						<span class="tile"><Icon name={x.icon} size={21} stroke={2.2} /></span>
 						<div class="row-main">
-							<div class="row-name">{x.name}</div>
+							<div class="row-nameline">
+								<span class="row-name">{x.name}</span>
+								{#if x.patLabel}
+									<span class="pat" class:match={x.match}>{x.patLabel}</span>
+								{/if}
+							</div>
 							<div class="row-meta">{x.meta}</div>
 						</div>
 						{#if x.inDay}
@@ -159,6 +186,10 @@
 		color: var(--mute);
 		font-weight: 500;
 	}
+	.cat-match {
+		color: var(--accent);
+		font-weight: 700;
+	}
 
 	.list {
 		background: var(--surface);
@@ -200,9 +231,31 @@
 		flex: 1;
 		min-width: 0;
 	}
+	.row-nameline {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
 	.row-name {
 		font-size: 15px;
 		font-weight: 600;
+	}
+	.pat {
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		padding: 2px 6px;
+		border-radius: 999px;
+		color: var(--mute);
+		background: var(--surface-hi);
+		border: 1px solid var(--line);
+		flex: 0 0 auto;
+	}
+	.pat.match {
+		color: var(--accent);
+		background: var(--accent-soft);
+		border-color: var(--accent);
 	}
 	.row-meta {
 		margin-top: 2px;

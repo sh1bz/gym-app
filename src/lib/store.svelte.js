@@ -1,7 +1,7 @@
 // Central state machine for Session, ported from the design prototype's logic class.
 // Offline-first: everything lives in-memory + localStorage; Supabase syncs when available.
 import { browser } from '$app/environment';
-import { SEED_PROGRAM, EXDB, CATS, DAY_MS, ICON_BY_NAME } from './seed.js';
+import { SEED_PROGRAM, EXDB, CATS, DAY_MS, ICON_BY_NAME, PATTERN_BY_NAME } from './seed.js';
 import {
 	fmt,
 	fmtElapsed,
@@ -216,11 +216,13 @@ export class GymStore {
 			this.detDay = 0;
 			this.detIdx = 0;
 		}
-		// Migrate saved programs to the richer catalog icons (by exercise name).
+		// Migrate saved programs to the richer catalog icons + movement patterns.
 		for (const d of this.program) {
 			for (const x of d.workout) {
-				const want = ICON_BY_NAME[x.name];
-				if (want && x.icon !== want) x.icon = want;
+				const wantIcon = ICON_BY_NAME[x.name];
+				if (wantIcon && x.icon !== wantIcon) x.icon = wantIcon;
+				const wantPat = PATTERN_BY_NAME[x.name];
+				if (wantPat && x.pattern !== wantPat) x.pattern = wantPat;
 			}
 		}
 		this.repCount = this.curEx.reps ?? 8;
@@ -725,6 +727,7 @@ export class GymStore {
 		const e = {
 			name: item.name,
 			icon: item.icon,
+			pattern: item.pattern,
 			sets: item.sets,
 			reps: item.reps,
 			start: item.start,
