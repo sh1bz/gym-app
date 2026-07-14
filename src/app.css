@@ -52,7 +52,8 @@ a:hover {
 	font-variant-numeric: tabular-nums;
 }
 
-/* App frame: a centered phone-sized portrait canvas. */
+/* App frame: a centered phone-sized portrait canvas on desktop; full-bleed on
+   a real phone or when installed as a standalone PWA. */
 .app-root {
 	min-height: 100dvh;
 	display: flex;
@@ -69,6 +70,13 @@ a:hover {
 	max-height: 920px;
 	background: radial-gradient(120% 80% at 50% -10%, #1a1c24 0%, var(--bg) 55%);
 	overflow: hidden;
+}
+/* On phones or an installed standalone app, fill the whole screen edge-to-edge. */
+@media (max-width: 480px), (display-mode: standalone) {
+	.app-frame {
+		max-width: none;
+		max-height: none;
+	}
 }
 .app-blob {
 	position: absolute;
