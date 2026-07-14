@@ -19,6 +19,12 @@
 	padding: 0;
 	box-sizing: border-box;
 	-webkit-tap-highlight-color: transparent;
+	/* Hide scrollbars everywhere (scrolling still works) for a native-app feel. */
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+	display: none;
 }
 html,
 body {
